@@ -5,6 +5,10 @@ This is a cli tool for getting readings from the Xayav Mask Creator dongle, writ
 taking readings using a computer that is not the computer doing primary HDMI output for a DLP/LCD 3d printer.
 For example, if you use NanoDLP's mask creator gui and you just need to fill in values from a grid.
 
+## What it isn't
+This does not change the LCD opacity during measurement like the Xayav software does, so you're losing a little
+bit of the accuracy provided by that.
+
 ## Compatibility
 It should be compatible with Windows, Linux, and MacOSX
 
@@ -56,4 +60,6 @@ the correct orientation. The raspberry pi requires the D7 display to be rotated.
 - Config file based configuration for serial port and grid size
 - Startup routine that lists detected serial port and allows you to chose the right one
 - Define grid size so the cell number correlates to a particular grid postion
+- Change the HDMI image between samples so that we can determine the best mask for this position, much like the
+original Xayav software does
 - Perhaps generating and export the mask image directly
