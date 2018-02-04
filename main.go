@@ -19,30 +19,20 @@ import (
 /**
 Discovered commands:
 M - get serial number
-S - Next sample? After the initial is recieved by a button press
-E - End sample?
+S - Next sample, after the initial is received by a button press
+E - End sample session
 R - Reboot/Reset device
 
 EOL is 0a (\n I think)
 
-I think the way it works is:
-- Click button, device sends
-Data:\r\n
-1 value
-- App sends S
-- Device sends
-1 value
-- App sends S
-- Device sends
-1 value
-...
-- App sends E which makes the device listen for the button click again
-*/
+When a button click happens, the device sends
+Data: \r\n
+44\r\n
 
-/*
-Responses:
-button click - Data\r\n
-S - ##\r\n
+44 being 1 sample point. In order to continue, we need to either reply with S for a new sample point, or E to end
+the sample session and allow for a new button press.
+
+EOL is \n
 */
 
 //0d = \r carriage return
@@ -89,17 +79,12 @@ func receive(pipe chan string, port io.ReadWriteCloser) {
 		}
 
 	}
-
 }
 
 /*
 Managing responses back to the device
 It appears that in order for more samples to happen after the button is clicked and one sample is sent,
 we need to respond with an S for each additional sample or E to reset the button state.
-
-If we receive Data:\r\n then read the following sample. Once the following sample is received, send a sample and receive it,
-repeating sampling until we've reached the max samples. Once we've received the last sample and we're at max samples,
-send E, average all of the samples, and send the resulting cell number and it's averaged value  to output
 */
 func controller(pipe chan string, outputChannel chan Output, port io.ReadWriteCloser) {
 	//number of samples to take before averaging and sending to output
@@ -194,14 +179,6 @@ func main() {
 	go receive(reciever, port)
 	go controller(reciever, output, port)
 
-	//port.Write([]byte("S"))
-
-	//o := <-output
-	//
-	//if o != "" {
-	//	log.Println(o)
-	//}
-
 	for {
 		o := <-output
 
@@ -209,12 +186,13 @@ func main() {
 			log.Println(o)
 		}
 	}
-
 }
 
 func setup() (io.ReadWriteCloser, error) {
 
-	c := &serial.Config{Name: "COM5", Baud: 9600}
+	portName := "COM5"
+
+	c := &serial.Config{Name: portName, Baud: 9600}
 
 	// Open the port.
 	port, err := serial.OpenPort(c)
