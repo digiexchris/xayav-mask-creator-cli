@@ -26,7 +26,10 @@ I decided a linux tool was necessary. Xayav said that they could not give me an 
 version of the mask creator tool would be available, so I decided to write my own.
 
 NOTE: I am not affiliated with Xayav in any way, and this tool is not supported by them. Don't send them
-support requests about this tool.
+support requests about this tool. Since they have not published their protocol or software source, I can't
+guarantee this will be free of problems. Even if they do publish details, If you use this software you are
+taking responsibility for anything that happens and agree that I will not be held liable. It sucks that
+we live in a world that I have to write that.
 
 ## How
 Right now, you need to be able to compile this program in order to use it. I will be doing some refactoring to
