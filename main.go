@@ -9,11 +9,15 @@ import (
 
 	"bufio"
 
+	"strconv"
+
+	"time"
+
 	"github.com/tarm/serial"
 )
 
 /**
-Reverse engineered commands:
+Discovered commands:
 M - get serial number
 S - Next sample? After the initial is recieved by a button press
 E - End sample?
@@ -44,13 +48,18 @@ S - ##\r\n
 //0d = \r carriage return
 //0a = \n linefeed
 
+type Output struct {
+	//The nth sampling session, or one button press cycle
+	Cell int
+	//the averaged value for this cell
+	Value int
+}
+
 func receive(pipe chan string, port io.ReadWriteCloser) {
 
 	portBuff := make([]byte, 100)
 
 	for {
-
-		//var buff bytes.Buffer
 
 		var err error
 
@@ -83,9 +92,98 @@ func receive(pipe chan string, port io.ReadWriteCloser) {
 
 }
 
+/*
+Managing responses back to the device
+It appears that in order for more samples to happen after the button is clicked and one sample is sent,
+we need to respond with an S for each additional sample or E to reset the button state.
+
+If we receive Data:\r\n then read the following sample. Once the following sample is received, send a sample and receive it,
+repeating sampling until we've reached the max samples. Once we've received the last sample and we're at max samples,
+send E, average all of the samples, and send the resulting cell number and it's averaged value  to output
+*/
+func controller(pipe chan string, outputChannel chan Output, port io.ReadWriteCloser) {
+	//number of samples to take before averaging and sending to output
+	const maxSamples = 96
+	//sample slower than once every 20ms
+	const sampleMinInterval = time.Millisecond * 5
+
+	var samples []int
+	var cell int
+	var nSamplesToRead int
+	nSamplesToRead = 0
+	cell = 0
+
+	for {
+		o := <-pipe
+
+		if o == "Data: " {
+			cell++
+
+			// -1 because we get one sample immediately on button press, it's already in the pipe
+			nSamplesToRead = maxSamples - 1
+			samples = nil
+
+			//there is a sample in the pipe following Data, so read it
+			sample, err := strconv.Atoi(<-pipe)
+			if err != nil {
+				log.Fatal(err)
+				break
+			}
+
+			samples = append(samples, sample)
+
+			//trigger the next sample after waiting 100ms
+			time.Sleep(sampleMinInterval)
+			send(port, "S")
+		} else if sample, err := strconv.Atoi(o); err == nil {
+			//if it's a number it's a sample
+			samples = append(samples, sample)
+			nSamplesToRead--
+			if nSamplesToRead < 1 {
+				//If we're done this set of sampling
+				var total int = 0
+				for _, value := range samples {
+					total += value
+				}
+
+				average := total / len(samples)
+
+				output := Output{
+					Cell:  cell,
+					Value: average,
+				}
+
+				outputChannel <- output
+
+				//we're done!
+				send(port, "E")
+			} else {
+				time.Sleep(sampleMinInterval)
+				send(port, "S")
+			}
+		} else {
+			//it's something else other than Data: or a sample, so it's probably device info
+			log.Println(o)
+			//we're done!
+			send(port, "E")
+		}
+
+	}
+}
+
+func send(port io.ReadWriteCloser, command string) {
+
+	_, err := port.Write([]byte(command))
+	if err != nil {
+		log.Fatal(err)
+	}
+}
+
 func main() {
 
-	output := make(chan string)
+	reciever := make(chan string)
+	output := make(chan Output)
+
 	port, err := setup()
 	if err != nil {
 		log.Fatal(err)
@@ -93,7 +191,8 @@ func main() {
 
 	defer teardown(port)
 
-	go receive(output, port)
+	go receive(reciever, port)
+	go controller(reciever, output, port)
 
 	//port.Write([]byte("S"))
 
@@ -103,14 +202,10 @@ func main() {
 	//	log.Println(o)
 	//}
 
-	port.Write([]byte("E"))
-
-	port.Write([]byte("S"))
-
 	for {
 		o := <-output
 
-		if o != "" {
+		if o != (Output{}) {
 			log.Println(o)
 		}
 	}
