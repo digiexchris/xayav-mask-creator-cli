@@ -5,6 +5,10 @@ import (
 
 	"io"
 
+	"strings"
+
+	"bufio"
+
 	"github.com/tarm/serial"
 )
 
@@ -15,10 +19,11 @@ S - Next sample? After the initial is recieved by a button press
 E - End sample?
 R - Reboot/Reset device
 
+EOL is 0a (\n I think)
 
 I think the way it works is:
 - Click button, device sends
-Data:\n\r
+Data:\r\n
 1 value
 - App sends S
 - Device sends
@@ -32,30 +37,42 @@ Data:\n\r
 
 /*
 Responses:
-button click - Data\n\r
-S - ##\n\r
+button click - Data\r\n
+S - ##\r\n
 */
 
-func receive(output chan string, port io.ReadWriteCloser) {
+//0d = \r carriage return
+//0a = \n linefeed
 
-	buff := make([]byte, 128)
+func receive(pipe chan string, port io.ReadWriteCloser) {
+
+	portBuff := make([]byte, 100)
 
 	for {
 
-		var s string
+		//var buff bytes.Buffer
 
-		s = ""
+		var err error
 
-		//TODO: figure out why this is only reading a single byte. Or loop until this has read the entire buffer, smash it together, split on \n\r, and then send each chunk to output
-		n, err := port.Read(buff) //port.Read(buff)
-		log.Printf("read")
+		reader := bufio.NewReader(port)
 
-		if n > 0 {
-			s = string(buff[:n])
+		portBuff, err = reader.ReadBytes('\x0a') //io.ReaderFrom() //.ReadFull(port, portBuff) //port.Read(portBuff) //port.Read(buff)
+
+		if string(portBuff[:len(portBuff)-1]) == "\n" {
+			//done, ship it
+			break
 		}
 
-		//send the average to the output
-		output <- s
+		//remove newline and cr characters
+		str := strings.Replace(string(portBuff), "\r", "", -1)
+		str = strings.Replace(str, "\n", "", -1)
+
+		output := strings.Split(str, "\n")
+
+		for _, s := range output {
+			//send the output into the channel
+			pipe <- s
+		}
 
 		if err != nil {
 			log.Fatal(err)
@@ -88,7 +105,7 @@ func main() {
 
 	port.Write([]byte("E"))
 
-	//port.Write([]byte("S"))
+	port.Write([]byte("S"))
 
 	for {
 		o := <-output
@@ -97,19 +114,6 @@ func main() {
 			log.Println(o)
 		}
 	}
-
-	//X++
-	//if X > MaxX {
-	//	X = 1
-	//}
-	//
-	//Y++
-	//if Y > MaxY {
-	//	Y = 1
-	//}
-
-	//log.Printf("X %x Y %x Value %x", X, Y, o)
-	//}
 
 }
 
